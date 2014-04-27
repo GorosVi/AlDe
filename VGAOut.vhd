@@ -8,9 +8,10 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 
 entity VOut is
 	port (
-		clk :  in STD_LOGIC;
-		HS  : out STD_LOGIC;
-		VS  : out STD_LOGIC;
+		CLK :  in STD_LOGIC;
+		TM  :  in STD_LOGIC := '1'; -- Negative
+		HS  : out STD_LOGIC;        -- Negative
+		VS  : out STD_LOGIC;        -- Negative
 		RCH : out STD_LOGIC_VECTOR(3 downto 0);
 		GCH : out STD_LOGIC_VECTOR(3 downto 0);
 		BCH : out STD_LOGIC_VECTOR(3 downto 0)
@@ -36,6 +37,7 @@ architecture Behavioral of VOut is
 	constant VerTotArea : INTEGER := VerVisArea + VerFrPArea + VerSyPArea + VerBkPArea;
 
 	signal color : STD_LOGIC;
+	signal VTest : STD_LOGIC;
 	signal mpos  : INTEGER range 0 to 8979;	
 	signal CCNT  : INTEGER range 0 to HorTotArea;
 	signal RCNT  : INTEGER range 0 to VerTotArea;
@@ -44,7 +46,7 @@ architecture Behavioral of VOut is
 
 	component thpic is
 		port (
-			clk :  in STD_LOGIC;
+			CLK :  in STD_LOGIC;
 			adr :  in STD_LOGIC_VECTOR (13 downto 0);
 			q   : out STD_LOGIC_VECTOR (7  downto 0)
 		);
@@ -54,42 +56,38 @@ begin
 
 	TPic:	thpic port map (
 			adr => conv_std_logic_vector(mpos,14),
-			clk => clk,
+			clk => CLK,
 			q   => picv
 	);
 
-	process(clk)
+	process(CLK)
 	begin
 	
-	if rising_edge(clk) then
+	if rising_edge(CLK) then
 
-		-- Margins test frame
---		if  conv_std_logic_vector(CCNT,1) = b"0" and conv_std_logic_vector(RCNT,1) = b"0" and
---			(CCNT = 0 or RCNT = 0 or CCNT = HorVisArea - 1 or RCNT = VerVisArea - 1) and
---			 CCNT < HorVisArea and RCNT < VerVisArea
---		    	then RCH <= x"F"; GCH <= x"F"; BCH <= x"F"; else RCH <= x"0"; GCH <= x"0"; BCH <= x"0";
---		end if;
+		-- Video test mode control
+		VTest <= not TM;
 
-		-- Visible area control
-		if CCNT < HorVisArea and RCNT < VerVisArea then
-			if color = '1'
-				then 
-					RCH <= b"1111";
-					GCH <= b"1111";
-					BCH <= b"1111";
-				else 
-					RCH <= b"0000";
-					GCH <= b"0000";
-					BCH <= b"0000";
-			end if;
-		else
-			RCH <= b"0000";
-			GCH <= b"0000";
-			BCH <= b"0000";
+		-- Video output
+		if CCNT < HorVisArea and RCNT < VerVisArea 
+			then
+				if VTest = '0' then 
+				-- Visible area control
+					if color = '1'
+						then RCH <= x"F"; GCH <= x"F"; BCH <= x"F";
+						else RCH <= x"0"; GCH <= x"0"; BCH <= x"0";
+					end if;
+				-- Grid for display test
+				elsif conv_std_logic_vector(CCNT,1) = b"0" and conv_std_logic_vector(RCNT,1) = b"0" and
+				      CCNT /=  2  and RCNT /= 2 and CCNT /= HorVisArea - 4 and RCNT /= VerVisArea - 4
+					then RCH <= x"F"; GCH <= x"F"; BCH <= x"F";
+					else RCH <= x"0"; GCH <= x"0"; BCH <= x"0";
+				end if;
+			else 
+				RCH <= x"0"; GCH <= x"0"; BCH <= x"0";
 		end if;
 
-
-		-- Owerflow control
+		-- Overflow control
 		if (CCNT = HorTotArea - 1) then
 			CCNT <= 0;
 			if RCNT = VerTotArea - 1 then
@@ -100,7 +98,6 @@ begin
 		else
 			CCNT <= CCNT + 1;
 		end if;
-
 
 		-- Sync pulse generation - negative polarity
 		if (CCNT >= HorVisArea + HorFrPArea) and (CCNT < HorTotArea - HorBkPArea) then
@@ -122,10 +119,10 @@ begin
 
 
 
-process(clk)
+process(CLK)
 	begin
 	
-	if rising_edge(clk) then
+	if rising_edge(CLK) then
 		
 		-- Fetch new pixel value
 		if (cctmp <  HorVisArea) and (CCNT = cctmp) then
@@ -141,7 +138,7 @@ process(clk)
 
 		-- Clear memory position each new frame
 		if (CCNT = HorTotArea - 2) and (RCNT = VerTotArea - 1) then
-			mpos <= 1; -- at 0 in memory placed number of blank rows (not used)
+			mpos <= 1;
 		end if;
 
 	end if;
